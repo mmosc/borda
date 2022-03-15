@@ -1,6 +1,10 @@
 import os
 import pandas as pd
 
+from config import *
+from tqdm import tqdm
+
+import csv
 
 def get_user_ids( rankings_path ):
     '''
@@ -140,3 +144,116 @@ def sum_borda_points( rankings_path, user_id, user_dataframe_columns ):
     user_df['rank'] = user_df.index + 1
 
     return user_df[['user', 'rank', 'item', 'points']]
+
+
+
+def append_user_topk_to_fused_pandas(rankings_path, k=10):
+    '''
+    Appends the topk of the given user to the 
+    dataframe containing the fused recommendations
+    for all the users.
+
+    Parameters
+    ----------
+
+    rankings_path: string. Path to the folder containing
+    the recommendations of the different recommenders
+    stored each in a .csv file, with columns
+    Columns: user, item, rank
+    
+    k: int. The number of elements to recommend
+
+    
+    Returns
+    -------
+    fused_recommendations: pandas DataFrame.  The dataframe containing
+    the fused recommendations for all users
+    
+    Columns: user, top_k
+    '''
+    
+    
+    
+    # Get the list of files with rankings
+    rankings = os.listdir( rankings_path )
+
+    # Open one file it as a dataframe
+    one_rec_df = pd.read_csv( rankings_path + rankings[0] )
+    
+    # Get the unique user_ids
+    users = get_user_ids( rankings_path ) 
+    #print( 'There are ', len(users), 'unique users.' )
+    
+    # Columns of the final dataframe
+    fused_dataframe_columns = [ 'user', 'top_k' ]
+    
+    # Initialize the final dataframe
+    fused_recommendations = pd.DataFrame( columns=fused_dataframe_columns )
+
+    # columns of the individual user dataframe
+    user_dataframe_columns = [ 'user', 'item', 'points' ]
+    
+    
+    for user_id in tqdm(users):
+        user_df = sum_borda_points( rankings_path, user_id, user_dataframe_columns )
+        user_data = {'user': user_df.user.values[0], 'top_k': user_df.user.values[:k]}
+        fused_recommendations = pd.concat( [fused_recommendations, 
+                    pd.DataFrame.from_dict( user_data, orient='columns' )], 
+                  ignore_index=True)    
+        
+    return fused_recommendations
+
+
+def append_user_topk_to_fused( rankings_path , k=10):
+    '''
+    Appends the topk of the given user to the 
+    file containing the fused recommendations
+    for all the users.
+
+    Parameters
+    ----------
+
+    rankings_path: string. Path to the folder containing
+    the recommendations of the different recommenders
+    stored each in a .csv file, with columns
+    Columns: user, item, rank
+    
+    k: int. The number of elements to recommend
+
+    
+    Returns
+    -------
+    fused_recommendations: pandas DataFrame.  The dataframe containing
+    the fused recommendations for all users
+    
+    Columns: user, top_k
+    '''
+    
+    
+    # Get the list of files with rankings
+    rankings = os.listdir( rankings_path )
+
+    # Open one file it as a dataframe
+    one_rec_df = pd.read_csv( rankings_path + rankings[0] )
+
+    # Get the unique user_ids
+    users = get_user_ids( rankings_path ) 
+    #print( 'There are ', len(users), 'unique users.' )
+
+    # Columns of the final dataframe
+    fused_dataframe_columns = [ 'user', 'top_k' ]
+
+    # Initialize the final dataframe
+    fused_recommendations = pd.DataFrame( columns=fused_dataframe_columns )
+
+    # columns of the individual user dataframe
+    user_dataframe_columns = [ 'user', 'item', 'points' ]
+
+    with open( output_path, 'w' ) as output_file:
+        writer = csv.writer(output_file, delimiter='\t')
+        writer.writerow( fused_dataframe_columns )
+
+        for user_id in tqdm( users ):
+            user_df = sum_borda_points( rankings_path, user_id, user_dataframe_columns )
+            user_data = [ user_df.user.values[0], list(user_df.item.values[:k]) ]
+            writer.writerow( user_data )
