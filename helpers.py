@@ -54,7 +54,7 @@ def filter_ranking_df(rankings_df, user_id):
     return rankings_df.loc[rankings_df['user'] == user_id]
 
 
-def get_points_df(rankings_df):
+def get_points_df(rankings_df, k=10):
     """
     Function that, given a df containing the rankings
     (for all users or for a single one),
@@ -74,7 +74,7 @@ def get_points_df(rankings_df):
     the df has columns: user, item, rank, points
     """
 
-    rankings_df['points'] = 11 - rankings_df['rank']
+    rankings_df['points'] = k + 1 - rankings_df['rank']
     return rankings_df
 
 
@@ -235,7 +235,7 @@ def append_user_top_k_to_fused(rankings_path, k=10):
 
         # Iterate over all users
         for user_id in tqdm(users):
-            # Get the borda points as a dataframe and order them descendingly
+            # Get the borda points as a dataframe and order them descending
             user_df = sum_borda_points(rankings_path, user_id, user_dataframe_columns)
             # Write the user_id as well as the first k elements in the final dataframe
             user_data = [user_df.user.values[0], list(user_df.item.values[:k])]
