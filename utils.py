@@ -3,7 +3,7 @@ import numpy as np
 
 def ndcg(ranked_list, pos_items, relevance=None, at=None):
 
-  ''' Compute NDCG score, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. '''
+  """ Compute NDCG score, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. """
 
   if relevance is None:
       relevance = np.ones_like(pos_items, dtype=np.int32)
@@ -29,7 +29,7 @@ def ndcg(ranked_list, pos_items, relevance=None, at=None):
 
 def dcg(scores):
 
-  ''' Compute DCG score, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. '''
+  """ Compute DCG score, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. """
 
   return np.sum(np.divide(np.power(2, scores) - 1, np.log(np.arange(scores.shape[0], dtype=np.float32) + 2)),
                   dtype=np.float32)
@@ -37,7 +37,7 @@ def dcg(scores):
 
 def recall(ranked_list, pos_items):
 
-  ''' Compute Recall, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. '''
+  """ Compute Recall, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. """
 
   is_relevant = np.in1d(ranked_list, pos_items, assume_unique=True)
   recall_score = np.sum(is_relevant, dtype=np.float32) / pos_items.shape[0]
@@ -48,7 +48,7 @@ def recall(ranked_list, pos_items):
 
 def precision(ranked_list, pos_items):
 
-  ''' Compute Precision, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. '''
+  """ Compute Precision, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. """
 
   is_relevant = np.in1d(ranked_list, pos_items, assume_unique=True)
   if len(is_relevant) == 0:
@@ -62,7 +62,7 @@ def precision(ranked_list, pos_items):
 
 def average_precision(ranked_list, pos_items):
 
-  ''' Computes MAP, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. '''
+  """ Computes MAP, based on https://github.com/recsyspolimi/RecSys_Course_AT_PoliMi implementation. """
 
   is_relevant = np.in1d(ranked_list, pos_items, assume_unique=True)
   if len(is_relevant) == 0:
