@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+pd.options.mode.chained_assignment = None
 
 from tqdm import tqdm
 
@@ -8,6 +9,7 @@ import numpy as np
 
 import json
 from datetime import datetime
+from itertools import combinations
 
 
 def generate_id(prefix=None, postfix=None):
@@ -354,7 +356,7 @@ def pandas_simple_borda(
     return ranking_df
 
 
-def pandas_weighted_borda(
+def pandas_weighted_borda_all_models(
         rankings_path,
         output_folder,
         k_init=50,
@@ -420,7 +422,7 @@ def pandas_weighted_borda(
     if weights is None:
         weights = np.ones(len(ranking_files))
 
-    #print("Computing weighted average with L{} norm".format(norm))
+    # print("Computing weighted average with L{} norm".format(norm))
 
     # If the weights are not normalised, normalise them
 
@@ -495,6 +497,160 @@ def pandas_weighted_borda(
     ranking_df.to_csv(output_csv, index=False, sep=',')
 
     return ranking_df
+
+
+def pandas_weighted_borda_pairwise(
+        rankings_path,
+        output_folder,
+        k_init=50,
+        k_final=10,
+        weights_grid_onemodel=None,
+        norm=1
+):
+    """
+    Computes the weighted Borda count for pairs of files
+    from a list of rankings provided by
+    recommender users. The ranked list are passed in as individual .csv
+    stored in the ranking_path folder and the resulting ranked lists
+    after voting are both returned as a dataframe and stored to a .csv
+    under the output_csv path.
+
+    The weighted voting is computed by assigning the first weight
+    to the first file retrieved by os.listdir, and
+    getting the weights of the second one by requiring the
+    normalisation to be one under the specified Lp norm.
+    If no weights are passed, the weights are all given the same
+    value.
+
+    The weights are normalized according to Lp norm passed as argument.
+    If none is given, L1 is applied (i.e. sum=1).
+
+    Parameters
+    ----------
+
+    rankings_path: string. Path to the folder containing
+    the recommendations of the different recommenders
+    stored each in a .csv file, with columns
+    the df has columns user, item, rank
+
+    output_folder: path to the file where the results of the voting are stored
+
+    k_init: the length of the initial lists stored in rankings_path
+
+    k_final: the length of the final recommended list
+
+    weights_grid_onemodel: the list of weights of a single model to be used in the voting
+
+    norm: the L_norm norm to be used in the voting
+
+
+    Returns
+    -------
+    ranking_df: pandas DataFrame. The dataframe containing
+    the fused recommendations for all users
+
+    """
+
+    output_folder = output_folder + '/pairwise/'
+
+    # If no weights_grid_onemodel are passed, set weights_grid_onemodel
+    # to a list with one 2**(-norm).
+    # This is equivalent to a non-weighted Borda
+    # for two models.
+    if weights_grid_onemodel is None:
+        weights_grid_onemodel = [2 ** (-norm)]
+
+    # List of file names
+    ranking_files = os.listdir(rankings_path)
+
+    # generate pairs of models without repetition
+    model_pairs = combinations(ranking_files, 2)
+
+    # print("Computing weighted average with L{} norm".format(norm))
+    for model_1, model_2 in tqdm(model_pairs):
+
+        for model_1_weight in weights_grid_onemodel:
+            model_2_weight = (1 - model_1_weight ** norm) ** (1 / norm)
+            # print("Model 1: ", model_1, "\t weight: ", model_1_weight)
+            # print("Model 2: ", model_2, "\t weight: ", model_2_weight)
+
+            # Columns of the final dataframe
+            fused_dataframe_columns = ['user', 'item', 'rank']
+
+            ###
+            # Concatenate all dataframes
+            ###
+            list_of_dataframes = []
+
+            # Initialize the params dictionary to be stored and store the norm in it
+            params = {'norm': norm, 'models': []}
+
+            for (individual_ranking, weight) in ((model_1, model_1_weight), (model_2, model_2_weight)):
+                # Open the individual ranking
+                one_ranking_df = pd.read_csv(rankings_path + individual_ranking, index_col=False, sep=',')
+                # Assign points according to the ranking and to the weight of this recommender
+                one_ranking_df['points'] = (k_init + 1 - one_ranking_df['rank']) * weight
+                list_of_dataframes.append(one_ranking_df)
+
+                # Store the model info and weight in the param dictionary
+                model_params = get_model_info_from_filename(individual_ranking)
+                # Add weight to the param dictionary of the specific model
+                model_params['weight'] = round(weight, 2)
+
+                # Add the specific model params to the overall dictionary of params
+                params['models'].append(model_params)
+
+            # model pair folder
+            model_pair_folder = output_folder
+            for model_params in params['models']:
+                for value in model_params.values():
+                    model_pair_folder += str(value)
+            model_pair_folder += '/'
+
+            # Create the folder for this specific pair
+            if not os.path.exists(model_pair_folder):
+                os.makedirs(model_pair_folder)
+
+            # Define the path to the final ranked list
+            model_pair_folder_csv = model_pair_folder + 'weighted_list.csv'
+
+            # Define the path to the .json storing info on the grid element
+            output_json = model_pair_folder + 'voting_params.json'
+
+            # Write model params and weights to the .json
+            with open(output_json, 'w') as fp:
+                json.dump(params, fp)
+
+            # Concatenate all dataframes
+            all_rankings_together = pd.concat(list_of_dataframes, ignore_index=True)
+
+            # Drop individual recommenders' rankings
+            all_rankings_together = all_rankings_together.drop(columns=['rank'])
+
+            # group by user and item and sum points
+            # I.e. for each user, get the sum of the points
+            # of each unique item
+            all_rankings_together = all_rankings_together.groupby(['user', 'item']).sum()
+
+            # Unset item from index
+            # leave only user as index
+            all_rankings_together = all_rankings_together.reset_index(level=[1])
+
+            # Sort rows according to user id
+            # and for each user id sort rows according to points
+            all_rankings_together = all_rankings_together.reset_index().sort_values(['user', 'points'], ascending=False)
+
+            # Get only the first final_k elements for each user
+            top_k_points = all_rankings_together.groupby('user').head(k_final)
+
+            # Assign the ranking of each item
+            top_k_points['rank'] = top_k_points.groupby(['user']).cumcount().add(1).values
+
+            # Select the relevant columns and write the .csv
+            ranking_df = top_k_points[fused_dataframe_columns]
+            ranking_df.to_csv(model_pair_folder_csv, index=False, sep=',')
+
+    return 1
 
 
 def get_model_info_from_filename(filename):
